@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+models/
+*.pkl
+*.pt
+.DS_Store
+venv/
+.venv/
+*.log
