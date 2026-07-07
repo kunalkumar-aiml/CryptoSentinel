@@ -6,7 +6,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, classification_report
 import xgboost as xgb
 import shap
-from config import FRAUD_MODEL_PATH, FRAUD_THRESHOLD
+from config import settings
+FRAUD_MODEL_PATH = settings.FRAUD_MODEL_PATH
+FRAUD_THRESHOLD = settings.FRAUD_THRESHOLD
 from utils.logger import get_logger
 
 log = get_logger("fraud_detector")
