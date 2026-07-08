@@ -48,7 +48,7 @@ class PriceForecaster:
 
     def _load_or_train(self):
         if os.path.exists(settings.FORECAST_MODEL_PATH):
-            state = torch.load(settings.FORECAST_MODEL_PATH, map_location=self.device)
+            state = torch.load(settings.FORECAST_MODEL_PATH, map_location=self.device, weights_only=False)
             self.model.load_state_dict(state["model"])
             self.scaler = state["scaler"]
             log.info("forecaster.loaded")

@@ -1,7 +1,3 @@
-"""
-CryptoSentinel FastAPI Backend — v2.1
-Auth + Portfolio + Market APIs
-"""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +8,8 @@ from typing import Optional
 
 from database.session import create_tables
 from auth.router import router as auth_router
+from api.portfolio import router as portfolio_router
+from api.trading import router as trading_router
 from agents.orchestrator import CryptoSentinelAgent
 from data.coingecko import get_top_coins, get_coin_info, get_ohlcv
 from utils.logger import get_logger
@@ -21,12 +19,10 @@ from config import settings
 
 log = get_logger("api")
 
-
 class ORJSONResponse(Response):
     media_type = "application/json"
     def render(self, content) -> bytes:
         return orjson_dumps(content)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,7 +35,6 @@ async def lifespan(app: FastAPI):
     yield
     log.info("shutdown")
 
-
 app = FastAPI(
     title="CryptoSentinel API",
     version=settings.APP_VERSION,
@@ -48,18 +43,15 @@ app = FastAPI(
 )
 
 app.add_middleware(CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"])
 
-# Include routers
 app.include_router(auth_router)
+app.include_router(portfolio_router)
+app.include_router(trading_router)
 
 _agent: Optional[CryptoSentinelAgent] = None
 _cache = None
-
 
 @app.middleware("http")
 async def request_logger(request: Request, call_next):
@@ -70,7 +62,6 @@ async def request_logger(request: Request, call_next):
              status=response.status_code, ms=ms)
     return response
 
-
 class AnalyzeRequest(BaseModel):
     wallet_address: str
     coin_id: str = "bitcoin"
@@ -78,20 +69,13 @@ class AnalyzeRequest(BaseModel):
 class RAGRequest(BaseModel):
     query: str
 
-
 @app.get("/")
 def root():
     return {"service": "CryptoSentinel", "version": settings.APP_VERSION, "status": "running"}
 
-
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "agent_ready": _agent is not None,
-        "version": settings.APP_VERSION,
-    }
-
+    return {"status": "ok", "agent_ready": _agent is not None, "version": settings.APP_VERSION}
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
@@ -106,40 +90,33 @@ async def analyze(req: AnalyzeRequest):
         log.error("analyze.failed", error=str(e))
         raise HTTPException(500, str(e)[:200])
 
-
 @app.get("/market/{coin_id}")
 async def market(coin_id: str):
     ck = cache_key("market", coin_id)
     cached = await _cache.get(ck)
-    if cached:
-        return cached
+    if cached: return cached
     data = get_coin_info(coin_id)
     await _cache.set(ck, data, ttl=30)
     return data
-
 
 @app.get("/ohlcv/{coin_id}")
 async def ohlcv(coin_id: str, days: int = 30):
     ck = cache_key("ohlcv", coin_id, days)
     cached = await _cache.get(ck)
-    if cached:
-        return cached
+    if cached: return cached
     df   = get_ohlcv(coin_id, days)
     data = safe_json_response(df.tail(300).to_dict(orient="records"))
     await _cache.set(ck, data, ttl=300)
     return data
 
-
 @app.get("/top-coins")
 async def top_coins(n: int = 10):
     ck = cache_key("top_coins", n)
     cached = await _cache.get(ck)
-    if cached:
-        return cached
+    if cached: return cached
     data = get_top_coins(n)
     await _cache.set(ck, data, ttl=30)
     return data
-
 
 @app.post("/rag/query")
 def rag_query(req: RAGRequest):
@@ -147,12 +124,10 @@ def rag_query(req: RAGRequest):
         raise HTTPException(503, "Agent not ready")
     return safe_json_response(_agent.rag.query(req.query))
 
-
 async def _run_in_thread(fn, *args):
     import asyncio, functools
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, functools.partial(fn, *args))
-
 
 if __name__ == "__main__":
     import uvicorn
