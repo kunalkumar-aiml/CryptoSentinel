@@ -1,20 +1,18 @@
 """
-CryptoSentinel Dashboard
-Run: streamlit run dashboard/app.py
+CryptoSentinel Dashboard v2 — Phase 3
+Full trading UI with auth, portfolio, buy/sell, charts.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.express as px
 import pandas as pd
-import numpy as np
-import requests, time
+import requests, time, json
 
-API_BASE = os.getenv("API_BASE", "http://localhost:8000")
+API = os.getenv("API_BASE", "http://localhost:8000")
 
-# ─── Page Config ─────────────────────────────────────────────────────────────
+# ── PAGE CONFIG ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="CryptoSentinel",
     page_icon="🛡️",
@@ -22,421 +20,530 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ─── Custom CSS (Cyberpunk Dark) ──────────────────────────────────────────────
+# ── CSS ────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'Space Grotesk', sans-serif !important;
-}
-.stApp {
-    background: #02040A;
-    color: #EDE9E0;
-}
-section[data-testid="stSidebar"] {
-    background: #060B14;
-    border-right: 1px solid rgba(0,229,255,0.1);
-}
-.block-container { padding-top: 1.5rem; }
-
-/* Metric cards */
-[data-testid="metric-container"] {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(0,229,255,0.12);
-    border-radius: 12px;
-    padding: 16px 20px !important;
-}
-[data-testid="metric-container"] label {
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 11px !important;
-    color: #8892A4 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-family: 'Space Grotesk', sans-serif !important;
-    font-size: 26px !important;
-    font-weight: 700 !important;
-    color: #00E5FF !important;
-}
-[data-testid="metric-container"] [data-testid="stMetricDelta"] {
-    font-size: 13px !important;
-}
-
-/* Inputs */
-.stTextInput input, .stSelectbox select {
-    background: #060B14 !important;
-    border: 1px solid rgba(0,229,255,0.2) !important;
-    border-radius: 8px !important;
-    color: #EDE9E0 !important;
-    font-family: 'JetBrains Mono', monospace !important;
-}
-.stTextInput input:focus {
-    border-color: #00E5FF !important;
-    box-shadow: 0 0 0 2px rgba(0,229,255,0.15) !important;
-}
-
-/* Buttons */
-.stButton button {
-    background: #00E5FF !important;
-    color: #02040A !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 10px 24px !important;
-    box-shadow: 0 0 20px rgba(0,229,255,0.3) !important;
-    transition: all 0.2s !important;
-}
-.stButton button:hover {
-    background: #00FDD0 !important;
-    box-shadow: 0 0 32px rgba(0,229,255,0.5) !important;
-    transform: translateY(-1px) !important;
-}
-
-/* Risk badges */
-.badge { display:inline-block; padding:5px 14px; border-radius:999px; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; letter-spacing:0.06em; }
-.badge-low      { background:rgba(34,197,94,0.15);  color:#22C55E; border:1px solid rgba(34,197,94,0.4);  }
-.badge-medium   { background:rgba(251,176,66,0.12); color:#FBB042; border:1px solid rgba(251,176,66,0.4); }
-.badge-high     { background:rgba(239,68,68,0.12);  color:#EF4444; border:1px solid rgba(239,68,68,0.4);  }
-.badge-critical { background:rgba(244,63,94,0.18);  color:#F43F5E; border:1px solid rgba(244,63,94,0.6);  animation: blink-border 1s ease-in-out infinite; }
-@keyframes blink-border { 0%,100%{border-color:rgba(244,63,94,0.6)} 50%{border-color:rgba(244,63,94,1)} }
-
-/* Panel cards */
-.panel {
-    background: rgba(255,255,255,0.025);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 14px;
-    padding: 20px 24px;
-    margin-bottom: 16px;
-}
-.panel-title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px; color: #00E5FF;
-    text-transform: uppercase; letter-spacing: 0.12em;
-    margin-bottom: 12px;
-}
-
-/* Divider */
-hr { border-color: rgba(255,255,255,0.06) !important; }
-
-/* Sidebar title */
-.sidebar-title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 18px; color: #00E5FF; font-weight: 500;
-    margin-bottom: 4px;
-}
-.sidebar-sub { font-size: 12px; color: #505869; margin-bottom: 24px; }
-
-/* Plotly background match */
-.js-plotly-plot .plotly { background: transparent !important; }
+html,body,[class*="css"]{font-family:'Space Grotesk',sans-serif!important}
+.stApp{background:#02040A;color:#EDE9E0}
+section[data-testid="stSidebar"]{background:#060B14;border-right:1px solid rgba(0,229,255,0.1)}
+.block-container{padding-top:1.5rem}
+[data-testid="metric-container"]{
+  background:rgba(255,255,255,0.03);border:1px solid rgba(0,229,255,0.12);
+  border-radius:12px;padding:16px 20px!important}
+[data-testid="metric-container"] label{
+  font-family:'JetBrains Mono',monospace!important;font-size:11px!important;
+  color:#8892A4!important;text-transform:uppercase;letter-spacing:0.08em}
+[data-testid="metric-container"] [data-testid="stMetricValue"]{
+  font-size:24px!important;font-weight:700!important;color:#00E5FF!important}
+.stTextInput input,.stSelectbox select{
+  background:#060B14!important;border:1px solid rgba(0,229,255,0.2)!important;
+  border-radius:8px!important;color:#EDE9E0!important;
+  font-family:'JetBrains Mono',monospace!important}
+.stButton button{
+  background:#00E5FF!important;color:#02040A!important;
+  font-family:'JetBrains Mono',monospace!important;font-weight:600!important;
+  border:none!important;border-radius:8px!important;
+  box-shadow:0 0 20px rgba(0,229,255,0.3)!important}
+.stButton button:hover{background:#00FDD0!important}
+.stNumberInput input{
+  background:#060B14!important;border:1px solid rgba(0,229,255,0.2)!important;
+  border-radius:8px!important;color:#EDE9E0!important}
+div[data-testid="stForm"]{
+  background:rgba(255,255,255,0.03);border:1px solid rgba(0,229,255,0.1);
+  border-radius:12px;padding:20px}
+.trade-card{
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);
+  border-radius:12px;padding:20px;margin-bottom:12px}
+.badge-buy{color:#22C55E;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);
+  padding:3px 10px;border-radius:999px;font-size:11px;font-family:'JetBrains Mono',monospace}
+.badge-sell{color:#EF4444;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);
+  padding:3px 10px;border-radius:999px;font-size:11px;font-family:'JetBrains Mono',monospace}
+.pnl-pos{color:#22C55E;font-weight:600}
+.pnl-neg{color:#EF4444;font-weight:600}
+hr{border-color:rgba(255,255,255,0.06)!important}
 </style>
 """, unsafe_allow_html=True)
 
-PLOTLY_THEME = dict(
-    plot_bgcolor  = "rgba(0,0,0,0)",
-    paper_bgcolor = "rgba(0,0,0,0)",
-    font          = dict(family="Space Grotesk", color="#8892A4"),
-    xaxis         = dict(gridcolor="rgba(255,255,255,0.05)", showline=False),
-    yaxis         = dict(gridcolor="rgba(255,255,255,0.05)", showline=False),
-    margin        = dict(l=0, r=0, t=30, b=0),
+PLOT = dict(
+    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="Space Grotesk", color="#8892A4"),
+    xaxis=dict(gridcolor="rgba(255,255,255,0.04)", showline=False),
+    yaxis=dict(gridcolor="rgba(255,255,255,0.04)", showline=False),
+    margin=dict(l=0, r=0, t=30, b=0),
 )
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-def risk_badge(level: str) -> str:
-    cls = {"LOW":"low","MEDIUM":"medium","HIGH":"high","CRITICAL":"critical"}.get(level,"medium")
-    return f'<span class="badge badge-{cls}">{level}</span>'
+COINS = {
+    "Bitcoin (BTC)":   "bitcoin",
+    "Ethereum (ETH)":  "ethereum",
+    "Solana (SOL)":    "solana",
+    "BNB":             "binancecoin",
+    "XRP":             "ripple",
+    "Dogecoin (DOGE)": "dogecoin",
+    "Cardano (ADA)":   "cardano",
+    "Polkadot (DOT)":  "polkadot",
+    "Avalanche (AVAX)":"avalanche-2",
+    "Chainlink (LINK)":"chainlink",
+}
 
-def risk_color(level: str) -> str:
-    return {"LOW":"#22C55E","MEDIUM":"#FBB042","HIGH":"#EF4444","CRITICAL":"#F43F5E"}.get(level,"#8892A4")
+# ── SESSION STATE ──────────────────────────────────────────────────────────────
+if "token"     not in st.session_state: st.session_state.token     = None
+if "user"      not in st.session_state: st.session_state.user      = None
+if "page"      not in st.session_state: st.session_state.page      = "dashboard"
 
-def api_get(path: str):
+# ── API HELPERS ────────────────────────────────────────────────────────────────
+def headers():
+    return {"Authorization": f"Bearer {st.session_state.token}"}
+
+def api_get(path, auth=True):
     try:
-        r = requests.get(f"{API_BASE}{path}", timeout=15)
+        h = headers() if auth else {}
+        r = requests.get(f"{API}{path}", headers=h, timeout=15)
         return r.json() if r.ok else None
-    except:
-        return None
+    except: return None
 
-def api_post(path: str, payload: dict):
+def api_post(path, data, auth=True):
     try:
-        r = requests.post(f"{API_BASE}{path}", json=payload, timeout=90)
-        return r.json() if r.ok else None
-    except:
-        return None
+        h = {"Content-Type": "application/json"}
+        if auth: h.update(headers())
+        r = requests.post(f"{API}{path}", headers=h, json=data, timeout=20)
+        return r.json(), r.ok
+    except Exception as e:
+        return {"detail": str(e)}, False
 
-# ─── Sidebar ──────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown('<div class="sidebar-title">🛡️ CryptoSentinel</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-sub">AI Risk Intelligence</div>', unsafe_allow_html=True)
-    st.markdown("---")
+# ── AUTH SCREEN ────────────────────────────────────────────────────────────────
+def show_auth():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("""
+        <div style='text-align:center;padding:40px 0 20px'>
+          <div style='font-size:48px'>🛡️</div>
+          <div style='font-family:JetBrains Mono,monospace;font-size:28px;
+                      color:#00E5FF;font-weight:700;margin:8px 0'>CryptoSentinel</div>
+          <div style='color:#8892A4;font-size:14px'>AI-Powered Crypto Intelligence Platform</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    page = st.radio("Navigation", ["📊 Dashboard", "🔍 Wallet Analyzer", "💬 Intelligence Query", "📈 Market Data"], label_visibility="collapsed")
-    st.markdown("---")
+        tab1, tab2 = st.tabs(["Login", "Register"])
 
-    coin_options = {"Bitcoin (BTC)":"bitcoin","Ethereum (ETH)":"ethereum","Solana (SOL)":"solana","BNB":"binancecoin","XRP":"ripple"}
-    selected_coin_label = st.selectbox("Coin", list(coin_options.keys()))
-    selected_coin = coin_options[selected_coin_label]
+        with tab1:
+            with st.form("login_form"):
+                phone    = st.text_input("Phone Number", placeholder="9999999999")
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Login →", use_container_width=True)
+            if submitted:
+                resp, ok = api_post("/auth/login", {"phone": phone, "password": password}, auth=False)
+                if ok:
+                    st.session_state.token = resp["access_token"]
+                    st.session_state.user  = resp["user"]
+                    st.success("Login successful!")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(resp.get("detail", "Login failed"))
 
-    st.markdown("---")
-    health = api_get("/health")
-    if health and health.get("agent_ready"):
-        st.success("🟢 Agent Online")
-    else:
-        st.error("🔴 Agent Offline — start main.py")
+        with tab2:
+            with st.form("register_form"):
+                name     = st.text_input("Full Name", placeholder="Kunal Kumar")
+                phone2   = st.text_input("Phone Number", placeholder="9999999999")
+                password2= st.text_input("Password", type="password", placeholder="min 6 chars")
+                submitted2 = st.form_submit_button("Create Account →", use_container_width=True)
+            if submitted2:
+                resp, ok = api_post("/auth/register",
+                    {"phone": phone2, "name": name, "password": password2}, auth=False)
+                if ok:
+                    st.session_state.token = resp["access_token"]
+                    st.session_state.user  = resp["user"]
+                    st.success(f"Welcome {name}! ₹1,00,000 virtual balance added.")
+                    time.sleep(0.8)
+                    st.rerun()
+                else:
+                    st.error(resp.get("detail", "Registration failed"))
 
-# ─── Page: Dashboard ──────────────────────────────────────────────────────────
-if page == "📊 Dashboard":
+# ── SIDEBAR ────────────────────────────────────────────────────────────────────
+def show_sidebar():
+    with st.sidebar:
+        st.markdown(f"""
+        <div style='padding:16px 0 8px'>
+          <div style='font-family:JetBrains Mono,monospace;font-size:16px;color:#00E5FF;font-weight:700'>
+            🛡️ CryptoSentinel
+          </div>
+          <div style='font-size:12px;color:#505869;margin-top:4px'>
+            {st.session_state.user["name"]}
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("---")
+
+        pages = {
+            "📊 Dashboard":   "dashboard",
+            "💼 Portfolio":   "portfolio",
+            "📈 Trade":       "trade",
+            "📰 Market":      "market",
+            "🧠 AI Research": "ai",
+        }
+        for label, key in pages.items():
+            active = st.session_state.page == key
+            if st.button(label, use_container_width=True,
+                         type="primary" if active else "secondary"):
+                st.session_state.page = key
+                st.rerun()
+
+        st.markdown("---")
+        summary = api_get("/portfolio/summary")
+        if summary:
+            st.metric("Virtual INR", f"₹{summary['virtual_inr']:,.0f}")
+            pnl = summary.get("total_pnl", 0)
+            pnl_color = "#22C55E" if pnl >= 0 else "#EF4444"
+            st.markdown(f"""
+            <div style='font-family:JetBrains Mono,monospace;font-size:11px;color:#8892A4;
+                        text-transform:uppercase;letter-spacing:0.08em;margin-top:8px'>
+              Total PnL
+            </div>
+            <div style='font-size:20px;font-weight:700;color:{pnl_color}'>
+              {"+" if pnl>=0 else ""}₹{pnl:,.0f}
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state.token = None
+            st.session_state.user  = None
+            st.rerun()
+
+# ── DASHBOARD ──────────────────────────────────────────────────────────────────
+def show_dashboard():
     st.markdown("## Market Overview")
-    top = api_get("/top-coins?n=8") or []
 
+    top = api_get("/top-coins?n=8", auth=False) or []
     if top:
         cols = st.columns(4)
-        for i, coin in enumerate(top[:4]):
-            chg = coin.get("price_change_percentage_24h", 0) or 0
-            with cols[i]:
+        for i, coin in enumerate(top[:8]):
+            chg = coin.get("price_change_percentage_24h") or 0
+            with cols[i % 4]:
                 st.metric(
-                    label=f"{coin.get('symbol','').upper()}",
-                    value=f"${coin.get('current_price', 0):,.2f}",
-                    delta=f"{chg:+.2f}%",
-                    delta_color="normal"
+                    coin.get("symbol","").upper(),
+                    f"${coin.get('current_price',0):,.2f}",
+                    f"{chg:+.2f}%",
                 )
 
     st.markdown("---")
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        ohlcv_data = api_get(f"/ohlcv/{selected_coin}?days=30") or []
-        if ohlcv_data:
-            df_chart = pd.DataFrame(ohlcv_data)
+        coin_label = st.selectbox("Select Coin", list(COINS.keys()), key="dash_coin")
+        coin_id    = COINS[coin_label]
+        ohlcv      = api_get(f"/ohlcv/{coin_id}?days=30", auth=False) or []
+        if ohlcv:
+            df = pd.DataFrame(ohlcv)
             fig = go.Figure()
-            if "close" in df_chart.columns:
-                # Price line with gradient fill
+            if "close" in df.columns:
+                color = "#22C55E" if df["close"].iloc[-1] >= df["close"].iloc[0] else "#EF4444"
                 fig.add_trace(go.Scatter(
-                    x=list(range(len(df_chart))),
-                    y=df_chart["close"],
-                    mode="lines",
-                    line=dict(color="#00E5FF", width=2),
-                    fill="tozeroy",
-                    fillcolor="rgba(0,229,255,0.06)",
+                    x=list(range(len(df))), y=df["close"],
+                    mode="lines", line=dict(color=color, width=2),
+                    fill="tozeroy", fillcolor=f"rgba({','.join(str(int(color[i:i+2],16)) for i in (1,3,5))},0.08)",
                     name="Price",
                 ))
-            fig.update_layout(title=f"{selected_coin_label} — 30 Day Price", **PLOTLY_THEME,
-                              height=300, showlegend=False)
+            fig.update_layout(**PLOT, height=320,
+                title=dict(text=f"{coin_label} — 30 Day Price", font=dict(color="#EDE9E0", size=14)))
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Price chart — connect API to load live data")
 
     with col2:
-        coin_info = api_get(f"/market/{selected_coin}") or {}
-        chg_24h = coin_info.get("price_change_24h", 0) or 0
-        chg_7d  = coin_info.get("price_change_7d", 0) or 0
-        st.markdown('<div class="panel"><div class="panel-title">Market Stats</div>', unsafe_allow_html=True)
-        st.markdown(f"**Price:** ${coin_info.get('price_usd', 0):,.2f}")
-        st.markdown(f"**24h Change:** {'🟢' if chg_24h>0 else '🔴'} {chg_24h:+.2f}%")
-        st.markdown(f"**7d Change:** {'🟢' if chg_7d>0 else '🔴'} {chg_7d:+.2f}%")
-        st.markdown(f"**Market Cap:** ${coin_info.get('market_cap',0)/1e9:.2f}B")
-        st.markdown(f"**Vol 24h:** ${coin_info.get('volume_24h',0)/1e6:.1f}M")
-        st.markdown("</div>", unsafe_allow_html=True)
+        info = api_get(f"/market/{coin_id}", auth=False) or {}
+        st.markdown("### Market Stats")
+        price_usd = info.get("price_usd") or 0
+        price_inr = price_usd * 83.5
+        chg_24h   = info.get("price_change_24h") or 0
+        chg_7d    = info.get("price_change_7d")  or 0
+        mc        = info.get("market_cap")       or 0
+        vol       = info.get("volume_24h")       or 0
 
-# ─── Page: Wallet Analyzer ────────────────────────────────────────────────────
-elif page == "🔍 Wallet Analyzer":
-    st.markdown("## Wallet Risk Analyzer")
-    st.markdown("Paste any Ethereum wallet address to run the full agentic analysis pipeline.")
-
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        wallet = st.text_input("Ethereum Wallet Address", placeholder="0xAbc123...", label_visibility="collapsed")
-    with col2:
-        analyze_btn = st.button("🔍 Analyze Wallet", use_container_width=True)
-
-    if analyze_btn and wallet:
-        with st.spinner("🤖 Agent running — fetching on-chain data, scoring fraud, forecasting prices, retrieving intelligence..."):
-            t0 = time.time()
-            result = api_post("/analyze", {"wallet_address": wallet, "coin_id": selected_coin})
-            elapsed = round(time.time() - t0, 1)
-
-        if not result:
-            st.error("Analysis failed — is the API running? `python main.py`")
-        else:
-            # Overall risk banner
-            risk = result.get("overall_risk", "UNKNOWN")
-            score = result.get("overall_score", 0)
-            color = risk_color(risk.split()[0])
+        def row(label, value):
             st.markdown(f"""
-            <div style="background:rgba(255,255,255,0.03);border:1px solid {color}40;border-left:4px solid {color};
-                        border-radius:12px;padding:20px 24px;margin:16px 0">
-                <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8892A4;margin-bottom:6px">OVERALL RISK ASSESSMENT</div>
-                <div style="font-size:28px;font-weight:700;color:{color}">{risk}</div>
-                <div style="font-size:13px;color:#8892A4;margin-top:4px">Risk score: {score:.3f} · Analyzed in {elapsed}s</div>
-            </div>
-            """, unsafe_allow_html=True)
+            <div style='display:flex;justify-content:space-between;
+                        padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05)'>
+              <span style='color:#8892A4;font-size:13px'>{label}</span>
+              <span style='font-weight:600;font-size:13px'>{value}</span>
+            </div>""", unsafe_allow_html=True)
 
-            # Three column results
-            c1, c2, c3 = st.columns(3)
+        row("Price (USD)",  f"${price_usd:,.2f}")
+        row("Price (INR)",  f"₹{price_inr:,.0f}")
+        row("24h Change",   f"{'🟢' if chg_24h>=0 else '🔴'} {chg_24h:+.2f}%")
+        row("7d Change",    f"{'🟢' if chg_7d>=0 else '🔴'} {chg_7d:+.2f}%")
+        row("Market Cap",   f"${mc/1e9:.2f}B")
+        row("Volume 24h",   f"${vol/1e6:.1f}M")
 
-            with c1:
-                fraud = result.get("fraud_analysis", {})
-                st.markdown('<div class="panel"><div class="panel-title">🔴 Fraud Analysis</div>', unsafe_allow_html=True)
-                fraud_prob = fraud.get("fraud_probability", 0)
-                # Gauge
-                fig_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=fraud_prob * 100,
-                    title={"text": "Fraud Score", "font": {"color": "#8892A4", "size": 12}},
-                    number={"suffix": "%", "font": {"color": "#EDE9E0"}},
-                    gauge={
-                        "axis": {"range": [0, 100], "tickcolor": "#505869"},
-                        "bar": {"color": risk_color(fraud.get("risk_level",""))},
-                        "bgcolor": "rgba(0,0,0,0)",
-                        "bordercolor": "rgba(0,0,0,0)",
-                        "steps": [
-                            {"range": [0,30], "color": "rgba(34,197,94,0.1)"},
-                            {"range": [30,60],"color": "rgba(251,176,66,0.1)"},
-                            {"range": [60,80],"color": "rgba(239,68,68,0.1)"},
-                            {"range": [80,100],"color": "rgba(244,63,94,0.15)"},
-                        ],
-                    }
-                ))
-                fig_gauge.update_layout(**PLOTLY_THEME, height=180)
-                st.plotly_chart(fig_gauge, use_container_width=True)
-                st.markdown(f"Risk Level: {risk_badge(fraud.get('risk_level',''))}", unsafe_allow_html=True)
-                if fraud.get("top_features"):
-                    st.markdown("**Top SHAP features:**")
-                    for f in fraud["top_features"][:3]:
-                        bar_w = min(abs(f["shap_value"]) * 80, 100)
-                        clr = "#EF4444" if f["shap_value"] > 0 else "#22C55E"
-                        st.markdown(f"""<div style="margin:4px 0">
-                            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8892A4">{f['feature']}</span>
-                            <div style="background:{clr}40;width:{bar_w}%;height:4px;border-radius:2px;margin-top:3px"></div>
-                        </div>""", unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
+# ── PORTFOLIO ──────────────────────────────────────────────────────────────────
+def show_portfolio():
+    st.markdown("## My Portfolio")
+    portfolio = api_get("/portfolio/")
+    if not portfolio:
+        st.error("Could not load portfolio")
+        return
 
-            with c2:
-                forecast = result.get("price_forecast", {})
-                st.markdown('<div class="panel"><div class="panel-title">📈 Price Forecast</div>', unsafe_allow_html=True)
-                prices = forecast.get("predicted_prices", [])
-                if prices:
-                    fig_fc = go.Figure()
-                    x = [f"+{(i+1)*4}h" for i in range(len(prices))]
-                    color_fc = "#22C55E" if forecast.get("direction") == "UP" else "#EF4444"
-                    fig_fc.add_trace(go.Scatter(
-                        x=x, y=prices,
-                        mode="lines+markers",
-                        line=dict(color=color_fc, width=2.5),
-                        marker=dict(color=color_fc, size=6),
-                        fill="tozeroy", fillcolor=f"{color_fc}15",
-                    ))
-                    fig_fc.update_layout(**PLOTLY_THEME, height=180, showlegend=False)
-                    st.plotly_chart(fig_fc, use_container_width=True)
-                direction = forecast.get("direction", "")
-                chg = forecast.get("change_pct", 0)
-                arrow = "🟢 ▲" if direction == "UP" else "🔴 ▼"
-                st.markdown(f"**Direction:** {arrow} {abs(chg):.2f}%")
-                st.markdown(f"**Current:** ${forecast.get('current_price', 0):,.2f}")
-                st.markdown(f"**Horizon:** {forecast.get('horizon_hours', 0)} hours")
-                st.markdown("</div>", unsafe_allow_html=True)
-
-            with c3:
-                rag = result.get("market_intelligence", {})
-                st.markdown('<div class="panel"><div class="panel-title">🧠 Intelligence Report</div>', unsafe_allow_html=True)
-                summary = rag.get("summary", "No summary available")
-                st.markdown(f'<div style="font-size:13px;color:#8892A4;line-height:1.6">{summary[:400]}...</div>', unsafe_allow_html=True)
-                st.markdown("**Sources:**")
-                for src in rag.get("sources", [])[:3]:
-                    score_bar = int(src.get("score", 0) * 100)
-                    st.markdown(f"""<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#505869;
-                                              margin:4px 0">{src['title'][:40]}...
-                        <span style="color:#00E5FF;float:right">{src.get('score',0):.2f}</span></div>""",
-                        unsafe_allow_html=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-
-            # Recommendations
-            st.markdown("### Recommendations")
-            recs = result.get("recommendations", [])
-            for rec in recs:
-                st.markdown(f"""<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);
-                                           border-radius:8px;padding:12px 16px;margin:6px 0;font-size:14px">{rec}</div>""",
-                    unsafe_allow_html=True)
-
-            # Agent trace
-            with st.expander("🤖 Agent Reasoning Trace"):
-                for i, msg in enumerate(result.get("agent_trace", [])):
-                    st.markdown(f"""<div style="font-family:'JetBrains Mono',monospace;font-size:11px;
-                                               color:#505869;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-                        <span style="color:#00E5FF">[{i+1}]</span> {msg}</div>""", unsafe_allow_html=True)
-
-# ─── Page: Intelligence Query ──────────────────────────────────────────────────
-elif page == "💬 Intelligence Query":
-    st.markdown("## Intelligence Query")
-    st.markdown("Ask anything about crypto markets, fraud patterns, or on-chain activity.")
-
-    query = st.text_input("Your question", placeholder="What are signs of a rug pull?", label_visibility="collapsed")
-    ask_btn = st.button("🧠 Ask Intelligence", use_container_width=False)
-
-    if ask_btn and query:
-        with st.spinner("Retrieving context and generating analysis..."):
-            result = api_post("/rag/query", {"query": query})
-        if result:
-            st.markdown("### Analysis")
-            st.markdown(f"""<div class="panel"><div style="font-size:15px;line-height:1.75;color:#EDE9E0">
-                {result.get('summary', 'No response')}</div></div>""", unsafe_allow_html=True)
-            st.markdown("### Source Documents")
-            for src in result.get("sources", []):
-                st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;
-                    background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);
-                    border-radius:8px;padding:10px 16px;margin:6px 0">
-                    <span style="font-size:13px">{src['title']}</span>
-                    <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#00E5FF">{src.get('score',0):.3f}</span>
-                </div>""", unsafe_allow_html=True)
+    bal = portfolio["balance"]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Cash Balance",    f"₹{bal['virtual_inr']:,.0f}")
+    c2.metric("Invested",        f"₹{bal['total_invested_inr']:,.0f}")
+    c3.metric("Current Value",   f"₹{bal['current_value_inr']:,.0f}")
+    pnl = bal["total_pnl_inr"]
+    c4.metric("Total PnL",       f"₹{pnl:+,.0f}", f"{bal['total_pnl_pct']:+.2f}%")
 
     st.markdown("---")
-    st.markdown("**Sample questions:**")
-    samples = ["What are indicators of wash trading?","How does Tornado Cash affect wallet risk scoring?",
-               "What happens to crypto prices after Bitcoin halving?","What is DeFi rug pull risk?"]
-    cols = st.columns(2)
-    for i, s in enumerate(samples):
-        with cols[i % 2]:
-            st.markdown(f"""<div style="background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.1);
-                border-radius:8px;padding:10px 14px;margin:4px 0;font-size:13px;color:#8892A4;
-                font-family:'JetBrains Mono',monospace">{s}</div>""", unsafe_allow_html=True)
+    holdings = portfolio.get("holdings", [])
+    if not holdings:
+        st.info("No holdings yet. Go to **Trade** to buy your first crypto!")
+        return
 
-# ─── Page: Market Data ────────────────────────────────────────────────────────
-elif page == "📈 Market Data":
+    st.markdown("### Holdings")
+    for h in holdings:
+        pnl_cls = "pnl-pos" if h["pnl_inr"] >= 0 else "pnl-neg"
+        pnl_icon = "▲" if h["pnl_inr"] >= 0 else "▼"
+        st.markdown(f"""
+        <div class='trade-card'>
+          <div style='display:flex;justify-content:space-between;align-items:center'>
+            <div>
+              <span style='font-size:18px;font-weight:700'>{h['symbol']}</span>
+              <span style='color:#8892A4;font-size:13px;margin-left:8px'>{h['coin_id']}</span>
+            </div>
+            <div style='text-align:right'>
+              <div style='font-size:18px;font-weight:700'>₹{h['current_value']:,.0f}</div>
+              <div class='{pnl_cls}'>{pnl_icon} ₹{abs(h['pnl_inr']):,.0f} ({h['pnl_pct']:+.2f}%)</div>
+            </div>
+          </div>
+          <div style='display:flex;gap:32px;margin-top:12px;color:#8892A4;font-size:13px'>
+            <span>Qty: <b style='color:#EDE9E0'>{h['quantity']:.6f}</b></span>
+            <span>Avg: <b style='color:#EDE9E0'>₹{h['avg_buy_price']:,.0f}</b></span>
+            <span>CMP: <b style='color:#00E5FF'>₹{h['current_price']:,.0f}</b></span>
+            <span>Invested: <b style='color:#EDE9E0'>₹{h['invested_inr']:,.0f}</b></span>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Allocation pie chart
+    if len(holdings) > 1:
+        st.markdown("### Allocation")
+        fig = go.Figure(go.Pie(
+            labels=[h["symbol"] for h in holdings],
+            values=[h["current_value"] for h in holdings],
+            hole=0.6,
+            marker=dict(colors=["#00E5FF","#7C3AED","#22C55E","#F59E0B","#EF4444",
+                                 "#8B5CF6","#06B6D4","#10B981","#F97316","#EC4899"]),
+        ))
+        fig.update_layout(**PLOT, height=300, showlegend=True,
+            legend=dict(font=dict(color="#8892A4")))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Trade history
+    st.markdown("---")
+    st.markdown("### Trade History")
+    trades_resp = api_get("/portfolio/trades")
+    trades = trades_resp.get("trades", []) if trades_resp else []
+    if trades:
+        for t in trades[:10]:
+            badge_cls  = "badge-buy" if t["side"] == "BUY" else "badge-sell"
+            ts = t["timestamp"][:16].replace("T"," ")
+            st.markdown(f"""
+            <div style='display:flex;justify-content:space-between;align-items:center;
+                        padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04)'>
+              <div style='display:flex;align-items:center;gap:12px'>
+                <span class='{badge_cls}'>{t['side']}</span>
+                <span style='font-weight:600'>{t['symbol']}</span>
+                <span style='color:#8892A4;font-size:13px'>{t['quantity']:.6f} @ ₹{t['price_inr']:,.0f}</span>
+              </div>
+              <div style='text-align:right'>
+                <div style='font-weight:600'>₹{t['total_inr']:,.0f}</div>
+                <div style='color:#505869;font-size:11px;font-family:JetBrains Mono,monospace'>{ts}</div>
+              </div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.info("No trades yet.")
+
+# ── TRADE ──────────────────────────────────────────────────────────────────────
+def show_trade():
+    st.markdown("## Paper Trading")
+    st.markdown("<div style='color:#8892A4;font-size:14px;margin-bottom:24px'>All trades use virtual money — no real funds involved.</div>",
+                unsafe_allow_html=True)
+
+    # Live prices
+    prices_resp = api_get("/trade/prices")
+    prices = {p["coin_id"]: p for p in (prices_resp.get("prices") or [])} if prices_resp else {}
+
+    col1, col2 = st.columns(2)
+
+    # BUY
+    with col1:
+        st.markdown("### 🟢 Buy")
+        with st.form("buy_form"):
+            coin_label = st.selectbox("Select Coin", list(COINS.keys()), key="buy_coin")
+            coin_id    = COINS[coin_label]
+            amount     = st.number_input("Amount (₹)", min_value=10.0, value=5000.0, step=100.0)
+
+            if coin_id in prices:
+                p = prices[coin_id]
+                qty_est = amount / p["price_inr"]
+                st.markdown(f"""
+                <div style='background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);
+                            border-radius:8px;padding:12px;margin:8px 0;font-size:13px'>
+                  <div style='color:#8892A4'>Current Price</div>
+                  <div style='font-size:18px;font-weight:700;color:#00E5FF'>₹{p['price_inr']:,.2f}</div>
+                  <div style='color:#8892A4;margin-top:4px'>You get ≈ <b style='color:#EDE9E0'>{qty_est:.6f} {p['symbol']}</b></div>
+                  <div style='color:{"#22C55E" if p["change_24h_pct"]>=0 else "#EF4444"};font-size:12px'>
+                    24h: {p["change_24h_pct"]:+.2f}%
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            submitted = st.form_submit_button("Buy Now →", use_container_width=True)
+
+        if submitted:
+            resp, ok = api_post("/trade/buy", {"coin_id": coin_id, "amount_inr": amount})
+            if ok:
+                st.success(f"✅ {resp['message']}")
+                st.info(f"Balance remaining: ₹{resp['balance_remaining_inr']:,.2f}")
+            else:
+                st.error(resp.get("detail", "Trade failed"))
+
+    # SELL
+    with col2:
+        st.markdown("### 🔴 Sell")
+        portfolio = api_get("/portfolio/")
+        holdings  = portfolio.get("holdings", []) if portfolio else []
+
+        if not holdings:
+            st.info("No holdings to sell. Buy some crypto first!")
+        else:
+            with st.form("sell_form"):
+                hold_options = {f"{h['symbol']} ({h['quantity']:.4f})": h["coin_id"] for h in holdings}
+                selected     = st.selectbox("Select Holding", list(hold_options.keys()))
+                sell_coin    = hold_options[selected]
+                sell_mode    = st.radio("Sell Mode", ["Percentage", "Quantity"], horizontal=True)
+
+                if sell_mode == "Percentage":
+                    pct = st.slider("Sell %", 1, 100, 50)
+                    sell_data = {"coin_id": sell_coin, "sell_pct": pct}
+                else:
+                    holding = next(h for h in holdings if h["coin_id"] == sell_coin)
+                    qty = st.number_input("Quantity", min_value=0.000001,
+                                          max_value=holding["quantity"], value=holding["quantity"])
+                    sell_data = {"coin_id": sell_coin, "quantity": qty}
+
+                if sell_coin in prices:
+                    p = prices[sell_coin]
+                    st.markdown(f"""
+                    <div style='background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);
+                                border-radius:8px;padding:12px;margin:8px 0;font-size:13px'>
+                      <div style='color:#8892A4'>Current Price</div>
+                      <div style='font-size:18px;font-weight:700;color:#00E5FF'>₹{p['price_inr']:,.2f}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                submitted2 = st.form_submit_button("Sell Now →", use_container_width=True)
+
+            if submitted2:
+                resp, ok = api_post("/trade/sell", sell_data)
+                if ok:
+                    pnl = resp.get("pnl_inr", 0)
+                    emoji = "📈" if pnl >= 0 else "📉"
+                    st.success(f"{emoji} {resp['message']}")
+                    st.info(f"Balance: ₹{resp['balance_inr']:,.2f}")
+                else:
+                    st.error(resp.get("detail", "Sell failed"))
+
+# ── MARKET ─────────────────────────────────────────────────────────────────────
+def show_market():
     st.markdown("## Market Data")
-    ohlcv = api_get(f"/ohlcv/{selected_coin}?days=90") or []
+    coin_label = st.selectbox("Select Coin", list(COINS.keys()))
+    coin_id    = COINS[coin_label]
+    days       = st.select_slider("Period", [7, 14, 30, 60, 90], value=30)
+
+    ohlcv = api_get(f"/ohlcv/{coin_id}?days={days}", auth=False) or []
     if ohlcv:
         df = pd.DataFrame(ohlcv)
-        if "close" in df.columns and "timestamp" in df.columns:
-            # Candlestick
+        if all(c in df.columns for c in ["open","high","low","close"]):
             fig = go.Figure(go.Candlestick(
-                x=df.index,
+                x=list(range(len(df))),
                 open=df["open"], high=df["high"],
                 low=df["low"],   close=df["close"],
                 increasing=dict(line=dict(color="#22C55E"), fillcolor="rgba(34,197,94,0.3)"),
                 decreasing=dict(line=dict(color="#EF4444"), fillcolor="rgba(239,68,68,0.3)"),
             ))
-            fig.update_layout(title=f"{selected_coin_label} — 90 Day Candlestick",
-                              **PLOTLY_THEME, height=420,
-                              xaxis_rangeslider_visible=False)
+            fig.update_layout(**PLOT, height=420, title=dict(
+                text=f"{coin_label} — {days} Day Candlestick",
+                font=dict(color="#EDE9E0")),
+                xaxis_rangeslider_visible=False)
             st.plotly_chart(fig, use_container_width=True)
 
-            # Volume bar
             if "volume" in df.columns:
-                fig_v = go.Figure(go.Bar(
-                    x=df.index, y=df["volume"],
+                fig2 = go.Figure(go.Bar(
+                    x=list(range(len(df))), y=df["volume"],
                     marker_color="rgba(0,229,255,0.3)",
-                    marker_line=dict(color="rgba(0,229,255,0.6)", width=0.5),
                 ))
-                fig_v.update_layout(title="Volume", **PLOTLY_THEME, height=180)
-                st.plotly_chart(fig_v, use_container_width=True)
+                fig2.update_layout(**PLOT, height=160,
+                    title=dict(text="Volume", font=dict(color="#EDE9E0",size=12)))
+                st.plotly_chart(fig2, use_container_width=True)
     else:
-        st.info("Connect to the API to load market data. Run `python main.py` first.")
+        st.info("Chart data loading...")
 
-# ─── Footer ───────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("""<div style="text-align:center;font-family:'JetBrains Mono',monospace;
-    font-size:11px;color:#505869;padding:8px">
-    CryptoSentinel v1.0 · Built by Kunal Kumar · SRM KTR 2026 · Not financial advice
-</div>""", unsafe_allow_html=True)
+# ── AI RESEARCH ────────────────────────────────────────────────────────────────
+def show_ai():
+    st.markdown("## 🧠 AI Research")
+    st.markdown("<div style='color:#8892A4;margin-bottom:20px'>Ask anything about crypto markets, on-chain data, or your portfolio.</div>",
+                unsafe_allow_html=True)
+
+    examples = [
+        "What are signs of a rug pull?",
+        "Should I hold Bitcoin long term?",
+        "What happens after a halving?",
+        "How to detect wash trading?",
+    ]
+    st.markdown("**Quick questions:**")
+    cols = st.columns(2)
+    for i, q in enumerate(examples):
+        if cols[i%2].button(q, use_container_width=True):
+            st.session_state["ai_query"] = q
+
+    query = st.text_input("Your question", value=st.session_state.get("ai_query",""),
+                          placeholder="Ask anything about crypto...")
+
+    if st.button("Ask AI →", type="primary") and query:
+        with st.spinner("Retrieving intelligence..."):
+            resp, ok = api_post("/rag/query", {"query": query})
+        if ok:
+            st.markdown(f"""
+            <div style='background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.15);
+                        border-radius:12px;padding:20px;margin-top:16px'>
+              <div style='font-family:JetBrains Mono,monospace;font-size:10px;color:#00E5FF;
+                          letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px'>AI Analysis</div>
+              <div style='font-size:15px;line-height:1.75;color:#EDE9E0'>{resp.get("summary","")}</div>
+            </div>""", unsafe_allow_html=True)
+            sources = resp.get("sources", [])
+            if sources:
+                st.markdown("**Sources:**")
+                for s in sources:
+                    st.markdown(f"- {s['title']} `{s.get('score',0):.2f}`")
+        else:
+            st.error("AI query failed")
+
+    if "ai_query" in st.session_state:
+        del st.session_state["ai_query"]
+
+# ── MAIN ───────────────────────────────────────────────────────────────────────
+if not st.session_state.token:
+    show_auth()
+else:
+    show_sidebar()
+    page = st.session_state.page
+    if   page == "dashboard": show_dashboard()
+    elif page == "portfolio": show_portfolio()
+    elif page == "trade":     show_trade()
+    elif page == "market":    show_market()
+    elif page == "ai":        show_ai()
+
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align:center;font-family:JetBrains Mono,monospace;
+        font-size:11px;color:#505869;padding:8px'>
+        CryptoSentinel · Paper Trading Only · Not Financial Advice
+    </div>""", unsafe_allow_html=True)
