@@ -181,6 +181,7 @@ def show_sidebar():
             "📈 Trade":       "trade",
             "📰 Market":      "market",
             "🧠 AI Research": "ai",
+        "⚡ Automation":   "automation",
         }
         for label, key in pages.items():
             active = st.session_state.page == key
@@ -540,6 +541,7 @@ else:
     elif page == "trade":     show_trade()
     elif page == "market":    show_market()
     elif page == "ai":        show_ai()
+    elif page == "automation": show_automation()
 
     st.markdown("---")
     st.markdown("""
@@ -547,3 +549,159 @@ else:
         font-size:11px;color:#505869;padding:8px'>
         CryptoSentinel · Paper Trading Only · Not Financial Advice
     </div>""", unsafe_allow_html=True)
+
+
+# ── AUTOMATION (appended) ──────────────────────────────────────────────────────
+def show_automation():
+    st.markdown("## ⚡ Automation Rules")
+    st.markdown("<div style='color:#8892A4;font-size:14px;margin-bottom:20px'>Set rules that auto-execute trades when conditions are met. Checked every 60 seconds.</div>", unsafe_allow_html=True)
+
+    RULE_EXAMPLES = {
+        "Buy BTC when price drops":    {"coin_id":"bitcoin",  "rule_type":"price_below","action":"buy", "trigger_value":5000000,"amount_inr":5000,"interval":None},
+        "Sell ETH when price rises":   {"coin_id":"ethereum", "rule_type":"price_above","action":"sell","trigger_value":300000, "amount_inr":5000,"interval":None},
+        "Take profit at 20%":          {"coin_id":"bitcoin",  "rule_type":"profit_pct", "action":"sell","trigger_value":20,     "amount_inr":5000,"interval":None},
+        "Stop loss at 10%":            {"coin_id":"ethereum", "rule_type":"loss_pct",   "action":"sell","trigger_value":10,     "amount_inr":5000,"interval":None},
+        "Weekly BTC DCA":              {"coin_id":"bitcoin",  "rule_type":"recurring",  "action":"buy", "trigger_value":0,      "amount_inr":1000,"interval":"weekly"},
+    }
+
+    col1, col2 = st.columns([1.2, 0.8])
+
+    with col1:
+        st.markdown("### Create New Rule")
+        preset = st.selectbox("Quick Preset (or fill manually)", ["Custom"] + list(RULE_EXAMPLES.keys()))
+        pre    = RULE_EXAMPLES.get(preset, {})
+
+        with st.form("rule_form"):
+            coin_label  = st.selectbox("Coin", list(COINS.keys()),
+                            index=list(COINS.values()).index(pre.get("coin_id","bitcoin")) if pre else 0)
+            coin_id     = COINS[coin_label]
+
+            rule_type = st.selectbox("Rule Type", [
+                "price_below", "price_above", "profit_pct", "loss_pct", "recurring"
+            ], index=["price_below","price_above","profit_pct","loss_pct","recurring"].index(pre.get("rule_type","price_below")) if pre else 0)
+
+            action = st.radio("Action", ["buy","sell"], horizontal=True,
+                              index=["buy","sell"].index(pre.get("action","buy")) if pre else 0)
+
+            # Dynamic label
+            label_map = {
+                "price_below": "Trigger Price (₹)",
+                "price_above": "Trigger Price (₹)",
+                "profit_pct":  "Profit % to trigger",
+                "loss_pct":    "Loss % to trigger (stop loss)",
+                "recurring":   "Not used (set to 0)",
+            }
+            trigger_val = st.number_input(label_map[rule_type],
+                            min_value=0.0, value=float(pre.get("trigger_value", 5000000)))
+
+            amount_inr = st.number_input("Amount (₹)", min_value=10.0,
+                            value=float(pre.get("amount_inr", 5000)))
+
+            interval = None
+            if rule_type == "recurring":
+                interval = st.selectbox("Frequency", ["daily","weekly","monthly"],
+                            index=["daily","weekly","monthly"].index(pre.get("interval","weekly")) if pre.get("interval") else 1)
+
+            note = st.text_input("Note (optional)", placeholder="My BTC dip strategy")
+            submitted = st.form_submit_button("Create Rule →", use_container_width=True)
+
+        if submitted:
+            payload = {
+                "coin_id":       coin_id,
+                "rule_type":     rule_type,
+                "action":        action,
+                "trigger_value": trigger_val,
+                "amount_inr":    amount_inr,
+                "note":          note or None,
+            }
+            if rule_type == "recurring":
+                payload["interval"] = interval
+            resp, ok = api_post("/automation/rules", payload)
+            if ok:
+                st.success(f"✅ Rule created: {resp.get('description','')}")
+                st.rerun()
+            else:
+                st.error(resp.get("detail","Failed to create rule"))
+
+    with col2:
+        st.markdown("### Rule Types Guide")
+        st.markdown("""
+        <div style='background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.1);
+                    border-radius:10px;padding:16px;font-size:13px;line-height:1.8'>
+          <b style='color:#00E5FF'>price_below</b><br>
+          Buy/sell when price drops under ₹X<br><br>
+          <b style='color:#00E5FF'>price_above</b><br>
+          Buy/sell when price rises above ₹X<br><br>
+          <b style='color:#7C3AED'>profit_pct</b><br>
+          Sell when profit reaches X% (take profit)<br><br>
+          <b style='color:#EF4444'>loss_pct</b><br>
+          Sell when loss hits X% (stop loss)<br><br>
+          <b style='color:#22C55E'>recurring</b><br>
+          Auto-buy every day/week/month (DCA)
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Active rules
+    st.markdown("---")
+    st.markdown("### Active Rules")
+    rules_resp = api_get("/automation/rules")
+    rules = rules_resp.get("rules", []) if rules_resp else []
+
+    if not rules:
+        st.info("No automation rules yet. Create one above!")
+    else:
+        for r in rules:
+            status_color = "#22C55E" if r["is_active"] else "#505869"
+            status_text  = "🟢 Active" if r["is_active"] else "⏸ Paused"
+            st.markdown(f"""
+            <div class='trade-card'>
+              <div style='display:flex;justify-content:space-between;align-items:center'>
+                <div>
+                  <span style='font-weight:600;font-size:15px'>{r['note'] or r['rule_type']}</span>
+                  <span style='color:#8892A4;font-size:12px;margin-left:8px'>#{r['id']}</span>
+                </div>
+                <span style='color:{status_color};font-size:12px;font-family:JetBrains Mono,monospace'>{status_text}</span>
+              </div>
+              <div style='display:flex;gap:20px;margin-top:10px;color:#8892A4;font-size:12px;flex-wrap:wrap'>
+                <span>Coin: <b style='color:#EDE9E0'>{r['coin_id']}</b></span>
+                <span>Type: <b style='color:#00E5FF'>{r['rule_type']}</b></span>
+                <span>Action: <b style='color:{"#22C55E" if r["action"]=="buy" else "#EF4444"}'>{r['action'].upper()}</b></span>
+                <span>Amount: <b style='color:#EDE9E0'>₹{r['amount_inr']:,.0f}</b></span>
+                <span>Triggered: <b style='color:#EDE9E0'>{r['times_triggered']}x</b></span>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            bcol1, bcol2 = st.columns([1, 1])
+            with bcol1:
+                if st.button(f"{'Pause' if r['is_active'] else 'Resume'}", key=f"tog_{r['id']}"):
+                    api_post(f"/automation/rules/{r['id']}/toggle", {}, auth=True)
+                    st.rerun()
+            with bcol2:
+                if st.button("🗑 Delete", key=f"del_{r['id']}"):
+                    requests.delete(f"{API}/automation/rules/{r['id']}", headers=headers())
+                    st.rerun()
+
+    # Execution logs
+    st.markdown("---")
+    st.markdown("### Execution Log")
+    logs_resp = api_get("/automation/logs")
+    logs = logs_resp.get("logs", []) if logs_resp else []
+    if logs:
+        for l in logs[:10]:
+            ok_color = "#22C55E" if l["status"] == "success" else "#EF4444"
+            st.markdown(f"""
+            <div style='display:flex;justify-content:space-between;align-items:center;
+                        padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:13px'>
+              <div>
+                <span style='color:{ok_color};font-family:JetBrains Mono,monospace;font-size:11px'>
+                  {l['status'].upper()}</span>
+                <span style='margin-left:8px;font-weight:600'>{l['action'].upper()} {l['coin_id']}</span>
+                <span style='color:#8892A4;margin-left:8px'>{l['message']}</span>
+              </div>
+              <span style='color:#505869;font-family:JetBrains Mono,monospace;font-size:10px'>
+                {l['executed_at'][:16].replace('T',' ')}
+              </span>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.info("No automation executions yet.")

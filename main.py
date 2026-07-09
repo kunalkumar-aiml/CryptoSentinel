@@ -1,15 +1,18 @@
 from contextlib import asynccontextmanager
+import asyncio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-import orjson, time
+import time
 from pydantic import BaseModel
 from typing import Optional
 
-from database.session import create_tables
+from database.session import create_tables, AsyncSessionLocal
 from auth.router import router as auth_router
 from api.portfolio import router as portfolio_router
 from api.trading import router as trading_router
+from api.automation import router as automation_router
+from api.scheduler import run_scheduler
 from agents.orchestrator import CryptoSentinelAgent
 from data.coingecko import get_top_coins, get_coin_info, get_ohlcv
 from utils.logger import get_logger
@@ -24,15 +27,23 @@ class ORJSONResponse(Response):
     def render(self, content) -> bytes:
         return orjson_dumps(content)
 
+_agent: Optional[CryptoSentinelAgent] = None
+_cache = None
+_scheduler_task = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _agent, _cache
+    global _agent, _cache, _scheduler_task
     log.info("startup.begin", version=settings.APP_VERSION)
     await create_tables()
     _cache = await get_cache()
     _agent = CryptoSentinelAgent()
+    # Start automation scheduler as background task
+    _scheduler_task = asyncio.create_task(run_scheduler(AsyncSessionLocal))
     log.info("startup.complete")
     yield
+    if _scheduler_task:
+        _scheduler_task.cancel()
     log.info("shutdown")
 
 app = FastAPI(
@@ -49,9 +60,7 @@ app.add_middleware(CORSMiddleware,
 app.include_router(auth_router)
 app.include_router(portfolio_router)
 app.include_router(trading_router)
-
-_agent: Optional[CryptoSentinelAgent] = None
-_cache = None
+app.include_router(automation_router)
 
 @app.middleware("http")
 async def request_logger(request: Request, call_next):
@@ -75,7 +84,9 @@ def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent_ready": _agent is not None, "version": settings.APP_VERSION}
+    return {"status": "ok", "agent_ready": _agent is not None,
+            "scheduler": _scheduler_task is not None and not _scheduler_task.done(),
+            "version": settings.APP_VERSION}
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
