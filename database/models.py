@@ -21,15 +21,15 @@ class User(Base):
 
 class Portfolio(Base):
     __tablename__ = "portfolios"
-    id:              Mapped[int]   = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id:         Mapped[int]   = mapped_column(Integer, ForeignKey("users.id"), unique=True)
-    virtual_inr:     Mapped[float] = mapped_column(Float, default=100000.0)
-    virtual_usd:     Mapped[float] = mapped_column(Float, default=0.0)
-    total_invested:  Mapped[float] = mapped_column(Float, default=0.0)
-    total_pnl:       Mapped[float] = mapped_column(Float, default=0.0)
-    created_at:      Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at:      Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    user:     Mapped["User"]      = relationship("User", back_populates="portfolio")
+    id:             Mapped[int]   = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id:        Mapped[int]   = mapped_column(Integer, ForeignKey("users.id"), unique=True)
+    virtual_inr:    Mapped[float] = mapped_column(Float, default=100000.0)
+    virtual_usd:    Mapped[float] = mapped_column(Float, default=0.0)
+    total_invested: Mapped[float] = mapped_column(Float, default=0.0)
+    total_pnl:      Mapped[float] = mapped_column(Float, default=0.0)
+    created_at:     Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at:     Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    user:     Mapped["User"]          = relationship("User", back_populates="portfolio")
     holdings: Mapped[list["Holding"]] = relationship("Holding", back_populates="portfolio", cascade="all, delete-orphan")
     trades:   Mapped[list["Trade"]]   = relationship("Trade",   back_populates="portfolio", cascade="all, delete-orphan")
 
