@@ -217,16 +217,53 @@ def show_automation():
     else: st.info("No executions yet.")
 def show_ai():
     st.markdown("## 🧠 AI Research")
-    for i,q in enumerate(["Signs of rug pull?","Hold Bitcoin long term?","What happens after halving?","How to detect wash trading?"]):
-        if st.columns(2)[i%2].button(q,use_container_width=True): st.session_state["aiq"]=q
-    query=st.text_input("Ask anything",value=st.session_state.get("aiq",""),placeholder="Ask about crypto...")
-    if st.button("Ask AI →",type="primary") and query:
+    
+    # Initialize query state
+    if "ai_query" not in st.session_state:
+        st.session_state.ai_query = ""
+    if "run_query" not in st.session_state:
+        st.session_state.run_query = False
+
+    # Preset questions
+    presets = [
+        "Signs of rug pull?",
+        "Hold Bitcoin long term?",
+        "What happens after halving?",
+        "How to detect wash trading?"
+    ]
+    
+    # Layout preset buttons
+    cols = st.columns(2)
+    for i, q in enumerate(presets):
+        if cols[i % 2].button(q, use_container_width=True):
+            st.session_state.ai_query = q
+            st.session_state.run_query = True
+            st.rerun()
+
+    # Form to support pressing Enter
+    with st.form("ai_search_form", clear_on_submit=False):
+        query = st.text_input("Ask anything", value=st.session_state.ai_query, placeholder="Ask about crypto...")
+        submitted = st.form_submit_button("Ask AI →", use_container_width=True)
+        if submitted:
+            st.session_state.ai_query = query
+            st.session_state.run_query = True
+            st.rerun()
+
+    # Run query if flagged
+    if st.session_state.run_query and st.session_state.ai_query:
+        st.session_state.run_query = False  # Reset flag
+        
         with st.spinner("Thinking..."):
-            r,ok=apost("/rag/query",{"query":query})
+            r, ok = apost("/rag/query", {"query": st.session_state.ai_query})
+        
         if ok:
-            st.markdown(f"<div style='background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.15);border-radius:12px;padding:20px;margin-top:16px'><div style='font-family:JetBrains Mono,monospace;font-size:10px;color:#00E5FF;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px'>AI Analysis</div><div style='font-size:15px;line-height:1.75'>{r.get('summary','')}</div></div>",unsafe_allow_html=True)
-            for s in r.get("sources",[]): st.markdown(f"- {s['title']} `{s.get('score',0):.2f}`")
-    if "aiq" in st.session_state: del st.session_state["aiq"]
+            st.markdown(f"<div style='background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.15);border-radius:12px;padding:20px;margin-top:16px'><div style='font-family:JetBrains Mono,monospace;font-size:10px;color:#00E5FF;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px'>AI Analysis</div><div style='font-size:15px;line-height:1.75'>{r.get('summary','')}</div></div>", unsafe_allow_html=True)
+            if r.get("sources"):
+                st.markdown("### Sources")
+                for s in r.get("sources", []):
+                    st.markdown(f"- **{s['title']}** (Source: `{s.get('source','')}`, Score: `{s.get('score',0):.2f}`)")
+        else:
+            st.error(f"Failed to get response from AI: {r.get('detail', 'Unknown error')}")
 if not st.session_state.token:
     show_auth()
 else:

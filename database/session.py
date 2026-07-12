@@ -6,11 +6,15 @@ from utils.logger import get_logger
 
 log = get_logger("database")
 
+async_connect_args = {}
+if "localhost" not in settings.DATABASE_URL and "127.0.0.1" not in settings.DATABASE_URL:
+    async_connect_args["ssl"] = "require"
+
 async_engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    connect_args={"ssl": "require"},
+    connect_args=async_connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -19,10 +23,14 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+sync_connect_args = {}
+if "localhost" not in settings.DATABASE_URL_SYNC and "127.0.0.1" not in settings.DATABASE_URL_SYNC:
+    sync_connect_args["sslmode"] = "require"
+
 sync_engine = create_engine(
     settings.DATABASE_URL_SYNC,
     echo=False,
-    connect_args={"sslmode": "require"},
+    connect_args=sync_connect_args,
 )
 
 async def create_tables():

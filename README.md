@@ -62,34 +62,48 @@ CryptoSentinel is a production-grade agentic AI system that autonomously chains 
 
 ## Quick Start
 
+> [!IMPORTANT]
+> **Python Version Requirement**: It is highly recommended to use **Python 3.11 or 3.12**. Avoid using Python 3.13, as many ML libraries (like PyTorch and XGBoost) do not have pre-built Python 3.13 wheels yet and will fail to compile.
+
 ### 1. Clone & Install
 ```bash
 git clone https://github.com/kunalkumar-aiml/CryptoSentinel
 cd CryptoSentinel
+
+# Create a virtual environment using Python 3.11 or 3.12
+python3.12 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
 ### 2. Configure
 ```bash
 cp .env.example .env
-# Edit .env — add your Etherscan API key (free at etherscan.io)
-# Optional: add NewsAPI key for live news ingestion
+# Edit .env to set up database and API keys
 ```
 
-### 3. Start Ollama (for LLM)
-```bash
-ollama pull llama3
-ollama serve
-```
+#### Database Setup
+Create a PostgreSQL database (e.g. `cryptosentinel`) and set the connection URLs in `.env`:
+* `DATABASE_URL=postgresql+asyncpg://<username>:<password>@localhost:5432/cryptosentinel`
+* `DATABASE_URL_SYNC=postgresql://<username>:<password>@localhost:5432/cryptosentinel`
 
-### 4. Run API
+*(Note: SSL is automatically bypassed for local database hosts like `localhost` or `127.0.0.1`)*
+
+#### LLM Setup (Groq)
+Register at [console.groq.com](https://console.groq.com/) and grab a free API key:
+* `GROQ_API_KEY=gsk_...`
+* `GROQ_MODEL=llama-3.3-70b-versatile`
+
+### 3. Run API
 ```bash
 python main.py
 # API running at http://localhost:8000
 # Docs at http://localhost:8000/docs
 ```
 
-### 5. Run Dashboard
+### 4. Run Dashboard
 ```bash
 streamlit run dashboard/app.py
 # Dashboard at http://localhost:8501

@@ -51,3 +51,10 @@ sentry-sdk==2.5.1
 tenacity==8.3.0
 orjson==3.10.3
 pytz==2024.1
+
+# Dashboard & Visualization
+streamlit==1.56.0
+plotly==6.9.0
+
+# Database helpers
+greenlet==3.5.3
