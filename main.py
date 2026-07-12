@@ -13,7 +13,6 @@ from api.portfolio import router as portfolio_router
 from api.trading import router as trading_router
 from api.automation import router as automation_router
 from api.scheduler import run_scheduler
-from agents.orchestrator import CryptoSentinelAgent
 from data.coingecko import get_top_coins, get_coin_info, get_ohlcv
 from utils.logger import get_logger
 from utils.serializer import safe_json_response, orjson_dumps
@@ -27,18 +26,27 @@ class ORJSONResponse(Response):
     def render(self, content) -> bytes:
         return orjson_dumps(content)
 
-_agent: Optional[CryptoSentinelAgent] = None
+_agent = None
 _cache = None
 _scheduler_task = None
 
+async def _load_agent_background():
+    global _agent
+    try:
+        from agents.orchestrator import CryptoSentinelAgent
+        _agent = CryptoSentinelAgent()
+        log.info("agent.ready")
+    except Exception as e:
+        log.error("agent.load_failed", error=str(e))
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _agent, _cache, _scheduler_task
+    global _cache, _scheduler_task
     log.info("startup.begin", version=settings.APP_VERSION)
     await create_tables()
     _cache = await get_cache()
-    _agent = CryptoSentinelAgent()
-    # Start automation scheduler as background task
+    # Load agent in background so Railway doesn't timeout
+    asyncio.create_task(_load_agent_background())
     _scheduler_task = asyncio.create_task(run_scheduler(AsyncSessionLocal))
     log.info("startup.complete")
     yield
@@ -80,18 +88,25 @@ class RAGRequest(BaseModel):
 
 @app.get("/")
 def root():
-    return {"service": "CryptoSentinel", "version": settings.APP_VERSION, "status": "running"}
+    return {
+        "service": "CryptoSentinel",
+        "version": settings.APP_VERSION,
+        "status": "running",
+        "agent": "ready" if _agent else "loading"
+    }
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent_ready": _agent is not None,
-            "scheduler": _scheduler_task is not None and not _scheduler_task.done(),
-            "version": settings.APP_VERSION}
+    return {
+        "status": "ok",
+        "agent_ready": _agent is not None,
+        "version": settings.APP_VERSION,
+    }
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
     if not _agent:
-        raise HTTPException(503, "Agent initialising")
+        raise HTTPException(503, "Agent still loading, retry in 60 seconds")
     t0 = time.monotonic()
     try:
         report = await _run_in_thread(_agent.analyze, req.wallet_address, req.coin_id)
@@ -132,11 +147,11 @@ async def top_coins(n: int = 10):
 @app.post("/rag/query")
 def rag_query(req: RAGRequest):
     if not _agent:
-        raise HTTPException(503, "Agent not ready")
+        raise HTTPException(503, "Agent still loading")
     return safe_json_response(_agent.rag.query(req.query))
 
 async def _run_in_thread(fn, *args):
-    import asyncio, functools
+    import functools
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, functools.partial(fn, *args))
 
