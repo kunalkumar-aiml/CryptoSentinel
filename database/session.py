@@ -6,16 +6,11 @@ from utils.logger import get_logger
 
 log = get_logger("database")
 
-# Railway PostgreSQL needs SSL
-connect_args = {"ssl": "require"} if "railway" in (settings.DATABASE_URL or "") else {}
-
 async_engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    pool_size=5,
-    max_overflow=10,
     pool_pre_ping=True,
-    connect_args=connect_args,
+    connect_args={"ssl": "require"},
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -24,14 +19,16 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
-sync_engine = create_engine(settings.DATABASE_URL_SYNC, echo=False)
-
+sync_engine = create_engine(
+    settings.DATABASE_URL_SYNC,
+    echo=False,
+    connect_args={"sslmode": "require"},
+)
 
 async def create_tables():
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     log.info("database.tables_ready")
-
 
 async def get_db():
     async with AsyncSessionLocal() as session:
